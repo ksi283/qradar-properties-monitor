@@ -34,6 +34,7 @@ interface RawRegexProperty {
   property_type: string;
   use_for_rule_engine: boolean;
   auto_discovered: boolean;
+  owner?: string;
   namespace?: string;
   creation_date?: number;
   modification_date?: number;
@@ -128,6 +129,7 @@ export class QRadarClient {
       property_type: raw.property_type as QRadarCustomProperty['property_type'],
       use_for_rule_engine: raw.use_for_rule_engine,
       auto_discovered: raw.auto_discovered,
+      owner: raw.owner,
       namespace: raw.namespace,
       creation_date: raw.creation_date,
       modification_date: raw.modification_date,
@@ -156,6 +158,7 @@ export class QRadarClient {
       property_type: raw.property_type as QRadarCustomProperty['property_type'],
       use_for_rule_engine: raw.use_for_rule_engine,
       auto_discovered: raw.auto_discovered,
+      owner: raw.owner,
       namespace: raw.namespace,
       creation_date: raw.creation_date,
       modification_date: raw.modification_date,

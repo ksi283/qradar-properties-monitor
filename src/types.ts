@@ -21,6 +21,8 @@ export interface QRadarCustomProperty {
   property_type: 'STRING' | 'NUMERIC' | 'IP' | 'PORT' | 'TIME' | 'BOOLEAN';
   use_for_rule_engine: boolean;
   auto_discovered: boolean;
+  /** Username of the QRadar user who owns / created this property */
+  owner?: string;
   namespace?: string;
   creation_date?: number;
   modification_date?: number;

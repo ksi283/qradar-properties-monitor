@@ -10,6 +10,7 @@ const SCALAR_FIELDS: (keyof QRadarCustomProperty)[] = [
   'property_type',
   'use_for_rule_engine',
   'enabled',
+  'owner',
   'namespace',
 ];
 

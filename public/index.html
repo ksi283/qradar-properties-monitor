@@ -372,11 +372,11 @@
         </div>
       </div>
       <div class="filter-bar">
-        <input type="text" id="searchInput" placeholder="Search by name…" oninput="renderTable()" />
+        <input type="text" id="searchInput" placeholder="Search by name or owner…" oninput="renderTable()" />
         <select id="filterEnabled" onchange="renderTable()">
-          <option value="">All</option>
-          <option value="true">Enabled</option>
-          <option value="false">Disabled</option>
+          <option value="">All Status</option>
+          <option value="enabled">Enabled</option>
+          <option value="disabled">Disabled</option>
         </select>
         <select id="filterType" onchange="renderTable()">
           <option value="">All Types</option>
@@ -394,15 +394,17 @@
             <tr>
               <th>ID</th>
               <th>Name</th>
+              <th>Owner</th>
               <th>Type</th>
               <th>Status</th>
               <th>Rule Engine</th>
               <th>Expressions</th>
+              <th style="text-align:center">Toggle</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody id="propTbody">
-            <tr><td colspan="7" class="empty">Loading…</td></tr>
+            <tr><td colspan="9" class="empty">Loading…</td></tr>
           </tbody>
         </table>
       </div>
@@ -437,6 +439,10 @@
     <div class="form-group">
       <label>Name *</label>
       <input type="text" id="fName" placeholder="e.g. HTTP_Method" />
+    </div>
+    <div class="form-group">
+      <label>Owner</label>
+      <input type="text" id="fOwner" placeholder="e.g. admin" />
     </div>
     <div class="form-group">
       <label>Description</label>
@@ -574,20 +580,32 @@
 
   // ── Table rendering ─────────────────────────────────────────────
   function renderTable() {
-    const search  = document.getElementById('searchInput').value.toLowerCase();
-    const enabled = document.getElementById('filterEnabled').value;
-    const type    = document.getElementById('filterType').value;
+    const search       = document.getElementById('searchInput').value.toLowerCase();
+    const enabledSel   = document.getElementById('filterEnabled').value;  // '' | 'enabled' | 'disabled'
+    const type         = document.getElementById('filterType').value;
 
     let props = allProperties;
-    if (search)  props = props.filter(p => p.name.toLowerCase().includes(search));
-    if (enabled !== '') props = props.filter(p => String(p.enabled) === enabled);
-    if (type)    props = props.filter(p => p.property_type === type);
+
+    // Search by name OR owner
+    if (search) {
+      props = props.filter(p =>
+        p.name.toLowerCase().includes(search) ||
+        (p.owner || '').toLowerCase().includes(search)
+      );
+    }
+
+    // Enabled/disabled filter — strict boolean comparison, not string coercion
+    if (enabledSel === 'enabled')  props = props.filter(p => p.enabled === true);
+    if (enabledSel === 'disabled') props = props.filter(p => p.enabled === false);
+
+    // Type filter
+    if (type) props = props.filter(p => p.property_type === type);
 
     document.getElementById('propCount').textContent = `${props.length} propert${props.length === 1 ? 'y' : 'ies'}`;
 
     const tbody = document.getElementById('propTbody');
     if (props.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="7" class="empty">No properties match the filter</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" class="empty">No properties match the filter</td></tr>';
       return;
     }
 
@@ -595,18 +613,25 @@
       const exprs = (p.expressions || []).map(e =>
         `<span class="expr-tag" title="capture group ${e.capture_group}">${escHtml(e.regex)}</span>`
       ).join('');
+      const toggleLabel = p.enabled ? 'Disable' : 'Enable';
+      const toggleColor = p.enabled ? 'var(--yellow)' : 'var(--green)';
       return `
         <tr>
           <td style="color:var(--muted)">${p.id}</td>
           <td><strong>${escHtml(p.name)}</strong>
             ${p.description ? `<div style="font-size:11px;color:var(--muted)">${escHtml(p.description)}</div>` : ''}
           </td>
+          <td style="color:var(--muted)">${escHtml(p.owner || '—')}</td>
           <td>${typePill(p.property_type)}</td>
           <td>${p.enabled
             ? '<span class="pill pill-green">Enabled</span>'
             : '<span class="pill pill-red">Disabled</span>'}</td>
           <td style="text-align:center">${p.use_for_rule_engine ? '✓' : '—'}</td>
           <td><div class="expr-list">${exprs || '<span style="color:var(--muted)">None</span>'}</div></td>
+          <td style="text-align:center">
+            <button class="btn-ghost" style="font-size:12px;padding:3px 8px;color:${toggleColor}"
+              onclick="toggleEnabled(${p.id}, ${p.enabled})">${toggleLabel}</button>
+          </td>
           <td>
             <button class="btn-ghost" style="font-size:12px;padding:3px 8px" onclick="openEditModal(${p.id})">Edit</button>
             <button class="btn-ghost" style="font-size:12px;padding:3px 8px;margin-left:4px;color:var(--red)" onclick="deleteProperty(${p.id},'${escHtml(p.name)}')">Delete</button>
@@ -688,6 +713,21 @@
     };
   }
 
+  // ── Enable / Disable toggle ──────────────────────────────────────
+  async function toggleEnabled(id, currentEnabled) {
+    try {
+      await fetch(`/api/properties/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: !currentEnabled }),
+      });
+      await loadProperties();
+      showToast(currentEnabled ? 'Property disabled' : 'Property enabled');
+    } catch {
+      showToast('Toggle failed', false);
+    }
+  }
+
   // ── Manual sync ─────────────────────────────────────────────────
   async function triggerSync() {
     setConn('sync', 'Syncing…');
@@ -707,6 +747,7 @@
     document.getElementById('modalTitle').textContent = 'New Custom Property';
     document.getElementById('editId').value = '';
     document.getElementById('fName').value = '';
+    document.getElementById('fOwner').value = '';
     document.getElementById('fDesc').value = '';
     document.getElementById('fType').value = 'STRING';
     document.getElementById('fRegex').value = '';
@@ -723,6 +764,7 @@
       document.getElementById('modalTitle').textContent = 'Edit Property';
       document.getElementById('editId').value = p.id;
       document.getElementById('fName').value = p.name;
+      document.getElementById('fOwner').value = p.owner || '';
       document.getElementById('fDesc').value = p.description || '';
       document.getElementById('fType').value = p.property_type;
       document.getElementById('fRegex').value = (p.expressions && p.expressions[0]) ? p.expressions[0].regex : '';
@@ -741,8 +783,10 @@
 
   async function submitProperty() {
     const id = document.getElementById('editId').value;
+    const ownerVal = document.getElementById('fOwner').value.trim();
     const body = {
       name:                document.getElementById('fName').value.trim(),
+      ...(ownerVal ? { owner: ownerVal } : {}),
       description:         document.getElementById('fDesc').value.trim(),
       property_type:       document.getElementById('fType').value,
       enabled:             document.getElementById('fEnabled').checked,
