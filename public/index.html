@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QRadar Properties Monitor</title>
+  <style>
+    /* ── Reset / Base ─────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:       #0f1117;
+      --surface:  #1a1d27;
+      --surface2: #22263a;
+      --border:   #2e3250;
+      --text:     #e2e6f0;
+      --muted:    #7880a0;
+      --accent:   #3b82f6;
+      --green:    #22c55e;
+      --yellow:   #eab308;
+      --red:      #ef4444;
+      --purple:   #a855f7;
+      --radius:   8px;
+      --font:     -apple-system, "Segoe UI", system-ui, sans-serif;
+    }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 14px;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    /* ── Layout ──────────────────────────────────────────────── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 56px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    header h1 { font-size: 16px; font-weight: 600; letter-spacing: .3px; }
+    header h1 span { color: var(--accent); }
+    .header-right { display: flex; align-items: center; gap: 12px; }
+
+    .conn-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+    }
+    .conn-badge .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+    }
+    .conn-badge.ok   .dot { background: var(--green); }
+    .conn-badge.err  .dot { background: var(--red);   }
+    .conn-badge.sync .dot { background: var(--yellow); animation: pulse 1s infinite; }
+
+    @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.4 } }
+
+    main {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    /* ── KPI cards ───────────────────────────────────────────── */
+    .kpi-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .kpi {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+    }
+    .kpi .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+    .kpi .value { font-size: 28px; font-weight: 700; margin-top: 4px; }
+    .kpi .value.green  { color: var(--green); }
+    .kpi .value.yellow { color: var(--yellow); }
+    .kpi .value.red    { color: var(--red); }
+    .kpi .value.accent { color: var(--accent); }
+
+    /* ── Two-column body ─────────────────────────────────────── */
+    .body-grid {
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      gap: 20px;
+    }
+    @media (max-width: 960px) { .body-grid { grid-template-columns: 1fr; } }
+
+    /* ── Panel ───────────────────────────────────────────────── */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .panel-tools { display: flex; gap: 8px; align-items: center; }
+
+    /* ── Table ───────────────────────────────────────────────── */
+    .tbl-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th {
+      background: var(--surface2);
+      color: var(--muted);
+      font-weight: 500;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: 9px 12px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--surface2); }
+
+    /* ── Pills ───────────────────────────────────────────────── */
+    .pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .pill-green  { background: #14532d55; color: var(--green);  border: 1px solid #14532d; }
+    .pill-red    { background: #7f1d1d55; color: var(--red);    border: 1px solid #7f1d1d; }
+    .pill-yellow { background: #71430055; color: var(--yellow); border: 1px solid #714300; }
+    .pill-accent { background: #1d3a8055; color: var(--accent); border: 1px solid #1d3a80; }
+    .pill-purple { background: #4c1d9555; color: var(--purple); border: 1px solid #4c1d95; }
+    .pill-muted  { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
+
+    /* ── Alerts feed ─────────────────────────────────────────── */
+    .alert-list { max-height: 560px; overflow-y: auto; }
+    .alert-item {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .alert-item:last-child { border-bottom: none; }
+    .alert-item .alert-top {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .alert-item .alert-name { font-weight: 600; font-size: 13px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .alert-item .alert-time { font-size: 11px; color: var(--muted); white-space: nowrap; }
+    .alert-item .alert-diff { font-size: 11px; color: var(--muted); }
+    .alert-item .diff-entry { font-family: monospace; font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .alert-item .diff-entry .diff-field { color: var(--text); }
+    .alert-item .diff-entry .diff-from  { color: var(--red); }
+    .alert-item .diff-entry .diff-to    { color: var(--green); }
+    .new-badge { animation: flash .6s ease; }
+    @keyframes flash { from { background: #3b82f620; } to { background: transparent; } }
+
+    /* ── Search / Filter bar ─────────────────────────────────── */
+    .filter-bar {
+      display: flex;
+      gap: 8px;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    input[type=text], select {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 5px 10px;
+      font-size: 13px;
+      outline: none;
+    }
+    input[type=text]:focus, select:focus { border-color: var(--accent); }
+    input[type=text] { flex: 1; }
+
+    /* ── Buttons ─────────────────────────────────────────────── */
+    button {
+      cursor: pointer;
+      border: none;
+      border-radius: 6px;
+      padding: 5px 12px;
+      font-size: 13px;
+      font-family: var(--font);
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-ghost {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-ghost:hover { background: var(--border); }
+
+    /* ── Expression sub-table ────────────────────────────────── */
+    .expr-list { margin-top: 4px; }
+    .expr-tag {
+      display: inline-block;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-size: 11px;
+      font-family: monospace;
+      margin: 2px 2px 0 0;
+      color: var(--accent);
+    }
+
+    /* ── Modal ───────────────────────────────────────────────── */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: #00000088;
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      width: 560px;
+      max-width: 95vw;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .modal h2 { font-size: 16px; margin-bottom: 16px; }
+    .form-group { margin-bottom: 14px; }
+    .form-group label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 7px 10px;
+      font-size: 13px;
+      font-family: var(--font);
+    }
+    .form-group textarea { resize: vertical; min-height: 60px; }
+    .modal-footer { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+    /* ── Scrollbar ───────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--surface); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* ── Empty state ─────────────────────────────────────────── */
+    .empty {
+      padding: 40px;
+      text-align: center;
+      color: var(--muted);
+    }
+
+    /* ── Toast ───────────────────────────────────────────────── */
+    #toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 16px;
+      font-size: 13px;
+      z-index: 300;
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity .2s, transform .2s;
+      pointer-events: none;
+    }
+    #toast.show { opacity: 1; transform: translateY(0); }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────── -->
+<header>
+  <h1>IBM <span>QRadar</span> Properties Monitor</h1>
+  <div class="header-right">
+    <div id="connBadge" class="conn-badge">
+      <span class="dot"></span>
+      <span id="connText">Connecting…</span>
+    </div>
+    <button class="btn-ghost" onclick="triggerSync()">↻ Sync</button>
+    <button class="btn-primary" onclick="openCreateModal()">+ New Property</button>
+  </div>
+</header>
+
+<!-- ── Main ───────────────────────────────────────────────────── -->
+<main>
+
+  <!-- KPI row -->
+  <div class="kpi-row">
+    <div class="kpi">
+      <div class="label">Total Properties</div>
+      <div class="value accent" id="kpiTotal">—</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Enabled</div>
+      <div class="value green" id="kpiEnabled">—</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Disabled</div>
+      <div class="value red" id="kpiDisabled">—</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Created (session)</div>
+      <div class="value green" id="kpiCreated">0</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Updated (session)</div>
+      <div class="value yellow" id="kpiUpdated">0</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Deleted (session)</div>
+      <div class="value red" id="kpiDeleted">0</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Last Sync</div>
+      <div class="value" style="font-size:14px;margin-top:6px;" id="kpiLastSync">—</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Sync Errors</div>
+      <div class="value red" id="kpiErrors">0</div>
+    </div>
+  </div>
+
+  <div class="body-grid">
+
+    <!-- Properties table -->
+    <div class="panel">
+      <div class="panel-header">
+        <span>Custom Properties</span>
+        <div class="panel-tools">
+          <span id="propCount" style="font-size:11px;color:var(--muted);">0 properties</span>
+        </div>
+      </div>
+      <div class="filter-bar">
+        <input type="text" id="searchInput" placeholder="Search by name…" oninput="renderTable()" />
+        <select id="filterEnabled" onchange="renderTable()">
+          <option value="">All</option>
+          <option value="true">Enabled</option>
+          <option value="false">Disabled</option>
+        </select>
+        <select id="filterType" onchange="renderTable()">
+          <option value="">All Types</option>
+          <option value="STRING">STRING</option>
+          <option value="NUMERIC">NUMERIC</option>
+          <option value="IP">IP</option>
+          <option value="PORT">PORT</option>
+          <option value="TIME">TIME</option>
+          <option value="BOOLEAN">BOOLEAN</option>
+        </select>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Name</th>
+              <th>Type</th>
+              <th>Status</th>
+              <th>Rule Engine</th>
+              <th>Expressions</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="propTbody">
+            <tr><td colspan="7" class="empty">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Alerts feed -->
+    <div class="panel">
+      <div class="panel-header">
+        <span>Change Alerts</span>
+        <div class="panel-tools">
+          <select id="alertFilter" onchange="renderAlerts()" style="font-size:12px;">
+            <option value="">All</option>
+            <option value="CREATED">Created</option>
+            <option value="UPDATED">Updated</option>
+            <option value="DELETED">Deleted</option>
+          </select>
+        </div>
+      </div>
+      <div class="alert-list" id="alertList">
+        <div class="empty">No alerts yet</div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<!-- ── Create / Edit Modal ────────────────────────────────────── -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <h2 id="modalTitle">New Custom Property</h2>
+    <input type="hidden" id="editId" />
+    <div class="form-group">
+      <label>Name *</label>
+      <input type="text" id="fName" placeholder="e.g. HTTP_Method" />
+    </div>
+    <div class="form-group">
+      <label>Description</label>
+      <textarea id="fDesc" placeholder="Optional description"></textarea>
+    </div>
+    <div class="form-group">
+      <label>Property Type *</label>
+      <select id="fType">
+        <option value="STRING">STRING</option>
+        <option value="NUMERIC">NUMERIC</option>
+        <option value="IP">IP</option>
+        <option value="PORT">PORT</option>
+        <option value="TIME">TIME</option>
+        <option value="BOOLEAN">BOOLEAN</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Regex Expression</label>
+      <input type="text" id="fRegex" placeholder="e.g. Method=([A-Z]+)" />
+    </div>
+    <div class="form-group">
+      <label>Capture Group</label>
+      <input type="text" id="fCapture" value="1" />
+    </div>
+    <div class="form-group" style="display:flex;align-items:center;gap:10px;">
+      <input type="checkbox" id="fEnabled" checked style="width:auto;" />
+      <label for="fEnabled" style="margin:0;color:var(--text);">Enabled</label>
+    </div>
+    <div class="form-group" style="display:flex;align-items:center;gap:10px;">
+      <input type="checkbox" id="fRuleEngine" checked style="width:auto;" />
+      <label for="fRuleEngine" style="margin:0;color:var(--text);">Use for Rule Engine</label>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn-primary" onclick="submitProperty()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  // ── State ──────────────────────────────────────────────────────
+  let allProperties = [];
+  let alertLog = [];
+  const sessionCounts = { CREATED: 0, UPDATED: 0, DELETED: 0 };
+
+  // ── Utilities ──────────────────────────────────────────────────
+  function fmt(ts) {
+    if (!ts) return '—';
+    const d = new Date(ts);
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+  function fmtFull(ts) {
+    if (!ts) return '—';
+    return new Date(ts).toLocaleString();
+  }
+  function showToast(msg, ok = true) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.borderColor = ok ? 'var(--green)' : 'var(--red)';
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3000);
+  }
+  function setConn(state, text) {
+    const b = document.getElementById('connBadge');
+    const span = document.getElementById('connText');
+    b.className = 'conn-badge ' + state;
+    span.textContent = text;
+  }
+  function kindPill(kind) {
+    const map = {
+      CREATED: ['pill-green', 'CREATED'],
+      UPDATED: ['pill-yellow', 'UPDATED'],
+      DELETED: ['pill-red', 'DELETED'],
+    };
+    const [cls, lbl] = map[kind] || ['pill-muted', kind];
+    return `<span class="pill ${cls}">${lbl}</span>`;
+  }
+  function typePill(t) {
+    const map = {
+      STRING: 'pill-accent', NUMERIC: 'pill-purple',
+      IP: 'pill-green', PORT: 'pill-yellow',
+      TIME: 'pill-muted', BOOLEAN: 'pill-red'
+    };
+    return `<span class="pill ${map[t] || 'pill-muted'}">${t}</span>`;
+  }
+
+  // ── Data loading ───────────────────────────────────────────────
+  async function loadStatus() {
+    try {
+      const r = await fetch('/api/status');
+      const d = await r.json();
+      document.getElementById('kpiLastSync').textContent = d.lastSync ? fmtFull(new Date(d.lastSync)) : '—';
+      document.getElementById('kpiErrors').textContent = d.errorCount;
+      if (d.errorCount > 0) setConn('err', 'Error');
+      else if (d.lastSync) setConn('ok', 'Connected');
+    } catch {
+      setConn('err', 'Unreachable');
+    }
+  }
+
+  async function loadProperties() {
+    try {
+      const r = await fetch('/api/properties');
+      const d = await r.json();
+      allProperties = d.properties || [];
+      updateKPIs();
+      renderTable();
+    } catch {
+      document.getElementById('propTbody').innerHTML =
+        '<tr><td colspan="7" class="empty">Failed to load properties</td></tr>';
+    }
+  }
+
+  async function loadAlerts() {
+    try {
+      const r = await fetch('/api/alerts?limit=200');
+      const d = await r.json();
+      alertLog = d.alerts || [];
+      renderAlerts();
+    } catch { /* ignore */ }
+  }
+
+  function updateKPIs() {
+    const total = allProperties.length;
+    const enabled = allProperties.filter(p => p.enabled).length;
+    document.getElementById('kpiTotal').textContent   = total;
+    document.getElementById('kpiEnabled').textContent  = enabled;
+    document.getElementById('kpiDisabled').textContent = total - enabled;
+    document.getElementById('kpiCreated').textContent  = sessionCounts.CREATED;
+    document.getElementById('kpiUpdated').textContent  = sessionCounts.UPDATED;
+    document.getElementById('kpiDeleted').textContent  = sessionCounts.DELETED;
+  }
+
+  // ── Table rendering ─────────────────────────────────────────────
+  function renderTable() {
+    const search  = document.getElementById('searchInput').value.toLowerCase();
+    const enabled = document.getElementById('filterEnabled').value;
+    const type    = document.getElementById('filterType').value;
+
+    let props = allProperties;
+    if (search)  props = props.filter(p => p.name.toLowerCase().includes(search));
+    if (enabled !== '') props = props.filter(p => String(p.enabled) === enabled);
+    if (type)    props = props.filter(p => p.property_type === type);
+
+    document.getElementById('propCount').textContent = `${props.length} propert${props.length === 1 ? 'y' : 'ies'}`;
+
+    const tbody = document.getElementById('propTbody');
+    if (props.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" class="empty">No properties match the filter</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = props.map(p => {
+      const exprs = (p.expressions || []).map(e =>
+        `<span class="expr-tag" title="capture group ${e.capture_group}">${escHtml(e.regex)}</span>`
+      ).join('');
+      return `
+        <tr>
+          <td style="color:var(--muted)">${p.id}</td>
+          <td><strong>${escHtml(p.name)}</strong>
+            ${p.description ? `<div style="font-size:11px;color:var(--muted)">${escHtml(p.description)}</div>` : ''}
+          </td>
+          <td>${typePill(p.property_type)}</td>
+          <td>${p.enabled
+            ? '<span class="pill pill-green">Enabled</span>'
+            : '<span class="pill pill-red">Disabled</span>'}</td>
+          <td style="text-align:center">${p.use_for_rule_engine ? '✓' : '—'}</td>
+          <td><div class="expr-list">${exprs || '<span style="color:var(--muted)">None</span>'}</div></td>
+          <td>
+            <button class="btn-ghost" style="font-size:12px;padding:3px 8px" onclick="openEditModal(${p.id})">Edit</button>
+            <button class="btn-ghost" style="font-size:12px;padding:3px 8px;margin-left:4px;color:var(--red)" onclick="deleteProperty(${p.id},'${escHtml(p.name)}')">Delete</button>
+          </td>
+        </tr>`;
+    }).join('');
+  }
+
+  function escHtml(s) {
+    return String(s ?? '')
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;');
+  }
+
+  // ── Alert rendering ─────────────────────────────────────────────
+  function renderAlerts() {
+    const kind = document.getElementById('alertFilter').value;
+    const items = kind ? alertLog.filter(a => a.kind === kind) : alertLog;
+    const el = document.getElementById('alertList');
+
+    if (items.length === 0) {
+      el.innerHTML = '<div class="empty">No alerts yet</div>';
+      return;
+    }
+
+    el.innerHTML = items.slice(0, 100).map(a => {
+      const diffHtml = (a.diff || []).slice(0, 3).map(d => `
+        <div class="diff-entry">
+          <span class="diff-field">${escHtml(d.field)}</span>:
+          <span class="diff-from">${escHtml(JSON.stringify(d.from))}</span>
+          → <span class="diff-to">${escHtml(JSON.stringify(d.to))}</span>
+        </div>`).join('');
+      const moreDiff = a.diff && a.diff.length > 3
+        ? `<div class="diff-entry" style="color:var(--muted)">…${a.diff.length - 3} more field(s)</div>` : '';
+
+      return `
+        <div class="alert-item">
+          <div class="alert-top">
+            ${kindPill(a.kind)}
+            <span class="alert-name">${escHtml(a.propertyName)}</span>
+            <span class="alert-time">${fmt(a.timestamp)}</span>
+          </div>
+          <div class="alert-diff">${diffHtml}${moreDiff}</div>
+        </div>`;
+    }).join('');
+  }
+
+  function prependAlert(alert) {
+    alertLog.unshift(alert);
+    if (alertLog.length > 500) alertLog.pop();
+    sessionCounts[alert.kind] = (sessionCounts[alert.kind] || 0) + 1;
+    updateKPIs();
+
+    // Reload properties on any change
+    loadProperties();
+    renderAlerts();
+
+    // Flash the first alert item
+    const firstItem = document.querySelector('#alertList .alert-item');
+    if (firstItem) firstItem.classList.add('new-badge');
+  }
+
+  // ── SSE subscription ────────────────────────────────────────────
+  function connectSSE() {
+    setConn('sync', 'Connecting…');
+    const es = new EventSource('/api/alerts/stream');
+    es.onopen = () => setConn('ok', 'Connected');
+    es.onerror = () => {
+      setConn('err', 'Reconnecting…');
+      setTimeout(connectSSE, 5000);
+      es.close();
+    };
+    es.onmessage = (e) => {
+      try {
+        const alert = JSON.parse(e.data);
+        prependAlert(alert);
+        showToast(`${alert.kind}: ${alert.propertyName}`);
+      } catch { /* ignore malformed */ }
+    };
+  }
+
+  // ── Manual sync ─────────────────────────────────────────────────
+  async function triggerSync() {
+    setConn('sync', 'Syncing…');
+    try {
+      await fetch('/api/sync', { method: 'POST' });
+      await Promise.all([loadStatus(), loadProperties()]);
+      setConn('ok', 'Connected');
+      showToast('Sync complete');
+    } catch {
+      setConn('err', 'Sync failed');
+      showToast('Sync failed', false);
+    }
+  }
+
+  // ── Create/Edit modal ───────────────────────────────────────────
+  function openCreateModal() {
+    document.getElementById('modalTitle').textContent = 'New Custom Property';
+    document.getElementById('editId').value = '';
+    document.getElementById('fName').value = '';
+    document.getElementById('fDesc').value = '';
+    document.getElementById('fType').value = 'STRING';
+    document.getElementById('fRegex').value = '';
+    document.getElementById('fCapture').value = '1';
+    document.getElementById('fEnabled').checked = true;
+    document.getElementById('fRuleEngine').checked = true;
+    document.getElementById('modal').classList.add('open');
+  }
+
+  async function openEditModal(id) {
+    try {
+      const r = await fetch(`/api/properties/${id}`);
+      const p = await r.json();
+      document.getElementById('modalTitle').textContent = 'Edit Property';
+      document.getElementById('editId').value = p.id;
+      document.getElementById('fName').value = p.name;
+      document.getElementById('fDesc').value = p.description || '';
+      document.getElementById('fType').value = p.property_type;
+      document.getElementById('fRegex').value = (p.expressions && p.expressions[0]) ? p.expressions[0].regex : '';
+      document.getElementById('fCapture').value = (p.expressions && p.expressions[0]) ? p.expressions[0].capture_group : '1';
+      document.getElementById('fEnabled').checked = p.enabled;
+      document.getElementById('fRuleEngine').checked = p.use_for_rule_engine;
+      document.getElementById('modal').classList.add('open');
+    } catch {
+      showToast('Failed to load property', false);
+    }
+  }
+
+  function closeModal() {
+    document.getElementById('modal').classList.remove('open');
+  }
+
+  async function submitProperty() {
+    const id = document.getElementById('editId').value;
+    const body = {
+      name:                document.getElementById('fName').value.trim(),
+      description:         document.getElementById('fDesc').value.trim(),
+      property_type:       document.getElementById('fType').value,
+      enabled:             document.getElementById('fEnabled').checked,
+      use_for_rule_engine: document.getElementById('fRuleEngine').checked,
+    };
+    if (!body.name) { showToast('Name is required', false); return; }
+
+    const regex   = document.getElementById('fRegex').value.trim();
+    const capture = parseInt(document.getElementById('fCapture').value, 10) || 1;
+
+    try {
+      let prop;
+      if (id) {
+        const r = await fetch(`/api/properties/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        prop = await r.json();
+      } else {
+        const r = await fetch('/api/properties', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        prop = await r.json();
+        // Add expression if provided
+        if (regex && prop.id) {
+          await fetch(`/api/properties/${prop.id}/expressions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ regex, capture_group: capture }),
+          });
+        }
+      }
+      closeModal();
+      await loadProperties();
+      showToast(id ? 'Property updated' : 'Property created');
+    } catch {
+      showToast('Save failed', false);
+    }
+  }
+
+  // ── Delete ──────────────────────────────────────────────────────
+  async function deleteProperty(id, name) {
+    if (!confirm(`Delete property "${name}" (ID: ${id})?\nThis cannot be undone.`)) return;
+    try {
+      await fetch(`/api/properties/${id}`, { method: 'DELETE' });
+      await loadProperties();
+      showToast(`Deleted: ${name}`);
+    } catch {
+      showToast('Delete failed', false);
+    }
+  }
+
+  // ── Init ────────────────────────────────────────────────────────
+  async function init() {
+    await Promise.all([loadStatus(), loadProperties(), loadAlerts()]);
+    connectSSE();
+
+    // Refresh status every 30 s
+    setInterval(loadStatus, 30_000);
+  }
+
+  init();
+</script>
+</body>
+</html>
